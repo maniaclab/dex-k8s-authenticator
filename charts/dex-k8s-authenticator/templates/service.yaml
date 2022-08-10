@@ -1,33 +1,36 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "dex-k8s-authenticator.fullname" . }}
+  name: {{ include "dex-k8s-authenticator.fullname" . }}
   labels:
-    app: {{ template "dex-k8s-authenticator.name" . }}
-    env: {{ default "dev" .Values.global.deployEnv }}
-    chart: {{ template "dex-k8s-authenticator.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
-{{- if .Values.service.labels }}
-{{ toYaml .Values.service.labels | indent 4 }}
-{{- end }}
-{{- if .Values.service.annotations }}
+    {{- include "dex-k8s-authenticator.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
   annotations:
-{{ toYaml .Values.service.annotations | indent 4 }}
-{{- end }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  {{- with .Values.service.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ . }}
+  {{- end }}
+  {{- if eq .Values.service.type "LoadBalancer" }}
+  {{- with .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  {{- with .Values.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges: {{ toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
   ports:
-  - port: {{ .Values.service.port }}
-    targetPort: http
-    protocol: TCP
-    name: http
-{{- if and  .Values.service.nodePort (eq "NodePort" .Values.service.type) }}
-    nodePort: {{ .Values.service.nodePort }}
-{{- end }}
-{{- if hasKey .Values.service "loadBalancerIP" }}
-  loadBalancerIP: {{ .Values.service.loadBalancerIP }}
-{{- end }}
+    - name: http
+      port: {{ .Values.service.port }}
+      {{- if and (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
+      targetPort: http
+      protocol: TCP
+      {{- if semverCompare ">=1.20-0" .Capabilities.KubeVersion.GitVersion }}
+      appProtocol: http
+      {{- end }}
   selector:
-    app: {{ template "dex-k8s-authenticator.name" . }}
-    release: {{ .Release.Name }}
+    {{- include "dex-k8s-authenticator.selectorLabels" . | nindent 4 }}
